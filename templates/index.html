@@ -1,0 +1,50 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+
+<head>
+    <title>Index of {{ path | default('/') }}</title>
+</head>
+
+<body>
+    <h1>Index of {{ path | default('/') }}</h1>
+    <table>
+        <tr>
+            <th valign="top"><img src="/icons/blank.gif" alt="[ICO]"></th>
+            <th><a href="{{ get_sort_url(request.path, 'N', sort_column, sort_order) }}">Name</a></th>
+            <th><a href="{{ get_sort_url(request.path, 'M', sort_column, sort_order) }}">Last modified</a></th>
+            <th><a href="{{ get_sort_url(request.path, 'S', sort_column, sort_order) }}">Size</a></th>
+            <th><a href="{{ get_sort_url(request.path, 'D', sort_column, sort_order) }}">Description</a></th>
+        </tr>
+        <tr>
+            <th colspan="5">
+                <hr>
+            </th>
+        </tr>
+        {%- if parent_dir %}
+        <tr>
+            <td valign="top"><img src="/icons/back.gif" alt="[PARENTDIR]"></td>
+            <td><a href="{{ parent_dir }}">Parent Directory</a></td>
+            <td>&nbsp;</td>
+            <td align="right"> - </td>
+            <td>&nbsp;</td>
+        </tr>
+        {%- endif %}
+        {%- for file in files %}
+        <tr>
+            <td valign="top"><img src="/icons/{{ file.icon }}" alt="[{{ file.type }}]"></td>
+            <td><a href="{{ file.href }}">{{ file.name }}{{ '/' if file.is_directory else '' }}</a></td>
+            <td align="right">{{ file.modified | default('&nbsp;') }} </td>
+            <td align="right">{{ file.size_formatted | default(' - ') }}</td>
+            <td>&nbsp;</td>
+        </tr>
+        {%- endfor %}
+        <tr>
+            <th colspan="5">
+                <hr>
+            </th>
+        </tr>
+    </table>
+    <address>{{ server_info | default('Flask Server') }}</address>
+</body>
+
+</html>
