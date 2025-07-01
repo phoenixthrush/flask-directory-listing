@@ -1,5 +1,7 @@
 import os
 import mimetypes
+import zipfile
+import tempfile
 from datetime import datetime
 from urllib.parse import quote, unquote
 import importlib.metadata
@@ -245,8 +247,13 @@ def directory_listing(subpath=''):
     if os.path.isfile(full_path):
         return send_file(full_path)
 
-    # If it's a directory, show listing
+    # If it's a directory, check for download request first
     if os.path.isdir(full_path):
+        # Check if this is a ZIP download request
+        download_param = request.args.get('download')
+        if download_param:
+            return download_directory_as_zip(full_path, download_param, subpath)
+        
         # Get sorting parameters - handle Apache's semicolon separator manually
         query_string = request.query_string.decode('utf-8')
         sort_column = 'N'  # default
@@ -446,6 +453,65 @@ def forbidden(error):
 <hr>
 <address>{SERVER_NAME} at {host} Port {port}</address>
 </body></html>""", 403
+
+
+def download_directory_as_zip(full_path, download_param, subpath):
+    """Create and send a ZIP file of the requested directory."""
+    try:
+        # Validate the directory name matches what was requested
+        target_dir = os.path.join(full_path, download_param)
+        target_dir = os.path.normpath(target_dir)
+        
+        # Security check - ensure we're still within SERVE_ROOT
+        if not target_dir.startswith(os.path.normpath(SERVE_ROOT)):
+            abort(403)
+        
+        # Check if the target directory exists
+        if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
+            abort(404)
+        
+        # Create a temporary ZIP file
+        temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+        temp_zip.close()
+        
+        with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Walk through the directory and add all files
+            for root, dirs, files in os.walk(target_dir):
+                for file in files:
+                    # Skip hidden files
+                    if file.startswith('.'):
+                        continue
+                        
+                    file_path = os.path.join(root, file)
+                    # Calculate the relative path within the ZIP
+                    arc_name = os.path.relpath(file_path, target_dir)
+                    zipf.write(file_path, arc_name)
+        
+        # Clean up function to delete temp file after sending
+        def remove_file(response):
+            try:
+                os.unlink(temp_zip.name)
+            except Exception:
+                pass
+            return response
+        
+        # Send the ZIP file
+        zip_filename = f"{download_param}.zip"
+        response = send_file(
+            temp_zip.name,
+            as_attachment=True,
+            download_name=zip_filename,
+            mimetype='application/zip'
+        )
+        
+        # Register cleanup function
+        response.call_on_close(lambda: os.unlink(temp_zip.name))
+        
+        return response
+        
+    except Exception as e:
+        print(f"ZIP download error: {str(e)}")
+        abort(500)
 
 
 if __name__ == '__main__':

@@ -47,7 +47,13 @@
         {%- for file in files %}
         <tr>
             <td valign="top"><img src="/icons/{{ file.icon }}" alt="[{{ file.type }}]"></td>
-            <td><a href="{{ file.href }}">{{ file.name }}{{ '/' if file.is_directory else '' }}</a></td>
+            <td>
+                <a href="{{ file.href }}">{{ file.name }}{{ '/' if file.is_directory else '' }}</a>
+                {% if file.is_directory %}
+                <a href="?download={{ file.name }}" style="margin-left: 10px; font-size: 0.8em; color: #666;"
+                    title="Download as ZIP">[ZIP]</a>
+                {% endif %}
+            </td>
             <td align="right">{{ file.modified | default('&nbsp;') }} </td>
             <td align="right">{{ file.size_formatted | default(' - ') }}</td>
             <td>&nbsp;</td>
