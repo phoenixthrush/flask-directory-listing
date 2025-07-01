@@ -305,13 +305,33 @@ def serve_assets(filename):
 @app.errorhandler(404)
 def not_found(error):
     """Handle 404 errors."""
-    return f"<h1>404 Not Found</h1><p>The requested URL was not found on this server.</p>", 404
+    port = request.host.split(':')[1] if ':' in request.host else '5001'
+    host = request.host.split(':')[0]
+    return f"""<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>404 Not Found</title>
+</head><body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<hr>
+<address>{SERVER_NAME} at {host} Port {port}</address>
+</body></html>""", 404
 
 
 @app.errorhandler(403)
 def forbidden(error):
     """Handle 403 errors."""
-    return f"<h1>403 Forbidden</h1><p>You don't have permission to access this resource.</p>", 403
+    port = request.host.split(':')[1] if ':' in request.host else '5001'
+    host = request.host.split(':')[0]
+    return f"""<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>403 Forbidden</title>
+</head><body>
+<h1>Forbidden</h1>
+<p>You don't have permission to access this resource.</p>
+<hr>
+<address>{SERVER_NAME} at {host} Port {port}</address>
+</body></html>""", 403
 
 
 if __name__ == '__main__':
