@@ -4,12 +4,14 @@ from datetime import datetime
 from urllib.parse import quote, unquote
 import importlib.metadata
 
-from flask import Flask, render_template, request, send_file, abort
+from flask import Flask, render_template, request, send_file, abort, jsonify
 
 app = Flask(__name__)
 
 SERVE_ROOT = os.path.join(os.path.dirname(__file__), 'apache', 'share')
 ICON_PATH = 'icons/'
+# Apache-style sorting configuration (False = directories first, True = mixed like Apache)
+APACHE_STYLE_SORTING = False
 try:
     flask_version = importlib.metadata.version("flask")
     SERVER_NAME = f'Flask/{flask_version} Server'
@@ -129,8 +131,11 @@ def format_file_size(size_bytes):
             return f"{size_g:3.0f}G"
 
 
-def get_directory_listing(directory_path, sort_by='name', sort_order='A'):
+def get_directory_listing(directory_path, sort_by='name', sort_order='A', apache_style=None):
     """Get a list of files and directories in the given path."""
+    if apache_style is None:
+        apache_style = APACHE_STYLE_SORTING
+        
     files = []
 
     try:
@@ -162,17 +167,29 @@ def get_directory_listing(directory_path, sort_by='name', sort_order='A'):
     except (OSError, PermissionError):
         return []
 
-    # Sort files - Apache sorts all items together, not directories first
-    # Apache uses case-sensitive lexicographic sorting (ASCII order)
-    if sort_by == 'name':
-        # Use case-sensitive sort like Apache
-        files.sort(key=lambda x: x['name'])
-    elif sort_by == 'modified':
-        files.sort(key=lambda x: x['modified_timestamp'])
-    elif sort_by == 'size':
-        files.sort(key=lambda x: x['size_bytes'])
-    elif sort_by == 'description':
-        files.sort(key=lambda x: x['description'])
+    # Sort files based on style preference
+    if apache_style:
+        # Apache sorts all items together, not directories first
+        # Apache uses case-sensitive lexicographic sorting (ASCII order)
+        if sort_by == 'name':
+            # Use case-sensitive sort like Apache
+            files.sort(key=lambda x: x['name'])
+        elif sort_by == 'modified':
+            files.sort(key=lambda x: x['modified_timestamp'])
+        elif sort_by == 'size':
+            files.sort(key=lambda x: x['size_bytes'])
+        elif sort_by == 'description':
+            files.sort(key=lambda x: x['description'])
+    else:
+        # Intuitive sorting: directories first, then files
+        if sort_by == 'name':
+            files.sort(key=lambda x: (not x['is_directory'], x['name']))
+        elif sort_by == 'modified':
+            files.sort(key=lambda x: (not x['is_directory'], x['modified_timestamp']))
+        elif sort_by == 'size':
+            files.sort(key=lambda x: (not x['is_directory'], x['size_bytes']))
+        elif sort_by == 'description':
+            files.sort(key=lambda x: (not x['is_directory'], x['description']))
 
     if sort_order == 'D':
         files.reverse()
@@ -182,13 +199,16 @@ def get_directory_listing(directory_path, sort_by='name', sort_order='A'):
 
 def get_sort_url(request_path, column, current_column, current_order):
     """Generate sort URL with proper order toggle logic matching Apache."""
+    # Use the global configuration for apache_style
+    apache_style = APACHE_STYLE_SORTING
+        
     if column == current_column:
         # If clicking on the same column, reverse the order
         new_order = 'D' if current_order == 'A' else 'A'
     else:
         # Default sort orders for each column when first clicked
         if column == 'N':  # Name - default ascending
-            new_order = 'D'  # But Apache shows descending first
+            new_order = 'D' if apache_style else 'A'  # Apache shows descending first
         elif column == 'M':  # Modified - default ascending
             new_order = 'A'
         elif column == 'S':  # Size - default ascending
@@ -231,6 +251,7 @@ def directory_listing(subpath=''):
         query_string = request.query_string.decode('utf-8')
         sort_column = 'N'  # default
         sort_order = 'A'   # default
+        apache_style = APACHE_STYLE_SORTING  # default from config
 
         if query_string:
             # Parse Apache-style parameters with semicolon separator
@@ -242,6 +263,13 @@ def directory_listing(subpath=''):
 
             sort_column = params.get('C', 'N')
             sort_order = params.get('O', 'A')
+            
+            # Handle apache parameter
+            apache_param = params.get('apache', '').lower()
+            if apache_param in ['true', '1', 'yes']:
+                apache_style = True
+            elif apache_param in ['false', '0', 'no']:
+                apache_style = False
 
         sort_map = {
             'N': 'name',
@@ -252,7 +280,7 @@ def directory_listing(subpath=''):
         sort_by = sort_map.get(sort_column, 'name')
 
         # Get file listing
-        files = get_directory_listing(full_path, sort_by, sort_order)
+        files = get_directory_listing(full_path, sort_by, sort_order, apache_style)
 
         # Determine parent directory
         parent_dir = None
@@ -268,7 +296,7 @@ def directory_listing(subpath=''):
 
         # Server info to match Apache format
         port = request.host.split(':')[1] if ':' in request.host else '5001'
-        server_info = f"Apache/2.4.62 (Ubuntu) Server at {request.host.split(':')[0]} Port {port}"
+        server_info = f"{SERVER_NAME} at {request.host.split(':')[0]} Port {port}"
 
         return render_template('index.html',
                                path=display_path,
@@ -282,6 +310,92 @@ def directory_listing(subpath=''):
                                get_sort_url=get_sort_url)
 
     abort(404)
+
+
+@app.route('/', methods=['POST'])
+@app.route('/<path:subpath>', methods=['POST'])
+def upload_file(subpath=''):
+    """Handle file upload requests."""
+    # Decode URL path
+    subpath = unquote(subpath)
+    
+    # Construct full path
+    full_path = os.path.join(SERVE_ROOT, subpath)
+    full_path = os.path.normpath(full_path)
+    
+    # Security check - ensure we're still within SERVE_ROOT
+    if not full_path.startswith(os.path.normpath(SERVE_ROOT)):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    # Check if directory exists
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        return jsonify({'success': False, 'error': 'Directory not found'}), 404
+    
+    # Check if this is an upload request
+    if 'upload' not in request.args:
+        return jsonify({'success': False, 'error': 'Invalid request'}), 400
+    
+    # Check if file was uploaded
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+    
+    try:
+        # Get the file and path from the form
+        filename = file.filename
+        relative_path = request.form.get('path', filename)  # Use 'path' if provided, otherwise filename
+        
+        # Normalize the relative path (remove any leading slashes, handle backslashes)
+        relative_path = relative_path.replace('\\', '/').lstrip('/')
+        
+        print(f"Uploading file: {filename} with path: {relative_path}")  # Debug logging
+        
+        # Create the full file path, preserving directory structure
+        if '/' in relative_path:
+            # This is a file within a directory structure
+            dir_structure = os.path.dirname(relative_path)
+            filename = os.path.basename(relative_path)
+            
+            # Create the directory structure if it doesn't exist
+            target_dir = os.path.join(full_path, dir_structure)
+            target_dir = os.path.normpath(target_dir)
+            
+            print(f"Creating directory structure: {target_dir}")  # Debug logging
+            
+            # Security check for the directory path
+            if not target_dir.startswith(full_path):
+                return jsonify({'success': False, 'error': 'Invalid directory path'}), 400
+                
+            # Create all necessary parent directories
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                print(f"Successfully created directory: {target_dir}")  # Debug logging
+            except OSError as e:
+                print(f"Error creating directory {target_dir}: {e}")  # Debug logging
+                return jsonify({'success': False, 'error': f'Failed to create directory: {str(e)}'}), 500
+                
+            file_path = os.path.join(target_dir, filename)
+        else:
+            # Simple file upload to current directory
+            file_path = os.path.join(full_path, filename)
+        
+        file_path = os.path.normpath(file_path)
+        print(f"Final file path: {file_path}")  # Debug logging
+        
+        # Final security check
+        if not file_path.startswith(full_path):
+            return jsonify({'success': False, 'error': 'Invalid filename'}), 400
+        
+        file.save(file_path)
+        print(f"Successfully saved file: {file_path}")  # Debug logging
+        return jsonify({'success': True, 'message': f'File {relative_path} uploaded successfully'})
+    
+    except Exception as e:
+        print(f"Upload error: {str(e)}")  # Debug logging
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/icons/<path:filename>')

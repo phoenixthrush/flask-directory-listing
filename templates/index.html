@@ -3,9 +3,24 @@
 
 <head>
     <title>Index of {{ path | default('/') }}</title>
+    <style>
+        #upload-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            background: #333;
+            color: white;
+            border-radius: 5px;
+            display: none;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+    </style>
 </head>
 
-<body>
+<body id="drop-zone">
+    <div id="upload-status"></div>
     <h1>Index of {{ path | default('/') }}</h1>
     <table>
         <tr>
@@ -45,6 +60,192 @@
         </tr>
     </table>
     <address>{{ server_info | default('Flask Server') }}</address>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const uploadStatus = document.getElementById('upload-status');
+
+        function showStatus(message, isError = false) {
+            uploadStatus.textContent = message;
+            uploadStatus.style.backgroundColor = isError ? '#cc0000' : '#333';
+            uploadStatus.style.display = 'block';
+            setTimeout(() => { uploadStatus.style.display = 'none'; }, 3000);
+        }
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.body.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            if (!dropZone.contains(e.relatedTarget)) {
+                document.body.classList.remove('dragover');
+            }
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.body.classList.remove('dragover');
+
+            const items = e.dataTransfer.items;
+            if (items.length === 0) return;
+
+            showStatus('Processing files and folders...');
+
+            const uploads = [];
+            let processedItems = 0;
+            const totalItems = items.length;
+
+            // Process each dropped item
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file') {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry) {
+                        if (entry.isFile) {
+                            // Handle single file
+                            entry.file(file => {
+                                uploads.push({ file: file, path: file.name });
+                                processedItems++;
+                                if (processedItems === totalItems) {
+                                    uploadFiles(uploads);
+                                }
+                            });
+                        } else if (entry.isDirectory) {
+                            // Handle directory
+                            processDirectory(entry, '', (files) => {
+                                uploads.push(...files);
+                                processedItems++;
+                                if (processedItems === totalItems) {
+                                    uploadFiles(uploads);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Fallback for browsers that don't support webkitGetAsEntry
+            if (totalItems === 0 || !items[0].webkitGetAsEntry) {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const fileUploads = Array.from(files).map(file => ({ file: file, path: file.name }));
+                    uploadFiles(fileUploads);
+                }
+            }
+        });
+
+        function processDirectory(dirEntry, path, callback) {
+            const files = [];
+            const dirReader = dirEntry.createReader();
+
+            function readEntries() {
+                dirReader.readEntries(entries => {
+                    if (entries.length === 0) {
+                        callback(files);
+                        return;
+                    }
+
+                    let processedEntries = 0;
+
+                    if (entries.length === 0) {
+                        processedEntries = 1; // Mark as processed for empty directories
+                    }
+
+                    entries.forEach(entry => {
+                        const fullPath = path ? `${path}/${entry.name}` : entry.name;
+
+                        if (entry.isFile) {
+                            entry.file(file => {
+                                files.push({ file: file, path: fullPath });
+                                processedEntries++;
+                                if (processedEntries === entries.length) {
+                                    readEntries(); // Continue reading (some browsers split results)
+                                }
+                            }, error => {
+                                console.error('Error reading file:', error);
+                                processedEntries++;
+                                if (processedEntries === entries.length) {
+                                    readEntries();
+                                }
+                            });
+                        } else if (entry.isDirectory) {
+                            processDirectory(entry, fullPath, (subFiles) => {
+                                files.push(...subFiles);
+                                processedEntries++;
+                                if (processedEntries === entries.length) {
+                                    readEntries(); // Continue reading
+                                }
+                            });
+                        } else {
+                            // Unknown entry type, skip it
+                            processedEntries++;
+                            if (processedEntries === entries.length) {
+                                readEntries();
+                            }
+                        }
+                    });
+                }, error => {
+                    console.error('Error reading directory:', error);
+                    callback(files); // Return what we have so far
+                });
+            }
+
+            readEntries();
+        }
+
+        function uploadFiles(uploads) {
+            if (uploads.length === 0) {
+                showStatus('No files to upload', true);
+                return;
+            }
+
+            console.log('Uploading files:', uploads.map(u => u.path)); // Debug logging
+            showStatus(`Uploading ${uploads.length} file(s)...`);
+            let completed = 0;
+            let errors = 0;
+
+            uploads.forEach((upload, index) => {
+                const formData = new FormData();
+                formData.append('file', upload.file);
+                formData.append('path', upload.path);
+
+                console.log(`Uploading ${index + 1}/${uploads.length}: ${upload.path}`); // Debug logging
+
+                fetch('{{ request.path }}?upload=1', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        completed++;
+                        console.log(`Upload result for ${upload.path}:`, data); // Debug logging
+                        if (!data.success) {
+                            errors++;
+                            console.error(`Upload failed for ${upload.path}:`, data.error);
+                        }
+
+                        if (completed === uploads.length) {
+                            if (errors === 0) {
+                                showStatus(`Successfully uploaded ${uploads.length} file(s)`);
+                                setTimeout(() => location.reload(), 1000);
+                            } else {
+                                showStatus(`Uploaded ${uploads.length - errors}/${uploads.length} files (${errors} errors)`, errors > 0);
+                                setTimeout(() => location.reload(), 2000);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        completed++;
+                        errors++;
+                        console.error(`Network error for ${upload.path}:`, error);
+                        if (completed === uploads.length) {
+                            showStatus(`Upload failed: ${errors} errors`, true);
+                            setTimeout(() => location.reload(), 2000);
+                        }
+                    });
+            });
+        }
+    </script>
 </body>
 
 </html>
