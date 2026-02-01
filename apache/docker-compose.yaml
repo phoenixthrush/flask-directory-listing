@@ -1,7 +1,0 @@
-services:
-  apache:
-    image: ubuntu/apache2:latest
-    ports:
-      - "8080:80"
-    volumes:
-      - ./share:/var/www/html/:ro
