@@ -11,25 +11,25 @@ authors = [
 maintainers = [
   { name="Phoenixthrush UwU", email="contact@phoenixthrush.com" }
 ]
-description = "Command-line scraper for javdatabase.com. Search movies, extract metadata, and download preview images or NFO files for media centers."
+description = "Flask app that replicates Apache-style directory listings. Supports file uploads and folder downloads as ZIP archives."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["javdatabase", "movies", "metadata", "preview", "images"]
+keywords = ["flask", "directory", "listing"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python"
 ]
 
 [project.urls]
-Homepage = "https://github.com/phoenixthrush/javdb-python"
-Documentation = "https://github.com/phoenixthrush/javdb-python/blob/main/README.md"
-Repository = "https://github.com/phoenixthrush/javdb-python.git"
-"Bug Tracker" = "https://github.com/phoenixthrush/javdb-python/issues"
-Changelog = "https://github.com/phoenixthrush/javdb-python/commits"
-"Source Code" = "https://github.com/phoenixthrush/javdb-python"
-"Download" = "https://github.com/phoenixthrush/javdb-python/archive/refs/heads/main.zip"
+Homepage = "https://github.com/phoenixthrush/flask-directory-listing"
+Documentation = "https://github.com/phoenixthrush/flask-directory-listing/blob/main/README.md"
+Repository = "https://github.com/phoenixthrush/flask-directory-listing.git"
+"Bug Tracker" = "https://github.com/phoenixthrush/flask-directory-listing/issues"
+Changelog = "https://github.com/phoenixthrush/flask-directory-listing/commits"
+"Source Code" = "https://github.com/phoenixthrush/flask-directory-listing"
+"Download" = "https://github.com/phoenixthrush/flask-directory-listing/archive/refs/heads/main.zip"
 Funding = "https://github.com/sponsors/phoenixthrush"
 
 [project.scripts]
-javdb = "javdb.__main__:main"
+flask-directory-listing = "flask_directory_listing.__main__:main"

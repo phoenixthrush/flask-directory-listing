@@ -4,17 +4,67 @@
 <head>
     <title>Index of {{ path | default('/') }}</title>
     <style>
+        body {
+            margin: 8px;
+            background: #fff;
+            color: #000;
+            font-size: 16px;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            font-family: serif;
+            font-weight: bold;
+        }
+
+        table {
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 2px 8px 2px 4px;
+            font-family: monospace;
+            font-size: 16px;
+            vertical-align: top;
+        }
+
+        th a,
+        td a {
+            color: #0000ee;
+            text-decoration: none;
+        }
+
+        th a:visited,
+        td a:visited {
+            color: #551a8b;
+        }
+
+        th a:hover,
+        td a:hover {
+            text-decoration: underline;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #c0c0c0;
+            margin: 4px 0;
+        }
+
         #upload-status {
             position: fixed;
             top: 10px;
             right: 10px;
-            padding: 10px;
+            padding: 8px 10px;
             background: #333;
             color: white;
-            border-radius: 5px;
+            border-radius: 4px;
             display: none;
-            max-width: 300px;
+            max-width: 320px;
             word-wrap: break-word;
+            font-family: sans-serif;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -50,8 +100,7 @@
             <td>
                 <a href="{{ file.href }}">{{ file.name }}{{ '/' if file.is_directory else '' }}</a>
                 {% if file.is_directory %}
-                <a href="?download={{ file.name }}" style="margin-left: 10px; font-size: 0.8em; color: #666;"
-                    title="Download as ZIP">[ZIP]</a>
+                <a href="?download={{ file.name }}" style="margin-left: 10px; font-size: 0.8em; color: #666;" title="Download as ZIP">[ZIP]</a>
                 {% endif %}
             </td>
             <td align="right">{{ file.modified | default('&nbsp;') }} </td>
